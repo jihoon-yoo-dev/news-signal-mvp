@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+build/
+dist/
+wheels/
+.venv/
+.Python
+
+# Local runtime / secrets
+.env
+.data/
+*.log
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
