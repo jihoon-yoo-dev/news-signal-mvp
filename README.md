@@ -1,37 +1,30 @@
 # news-signal-mvp
 
-**Episode 3 — Box 2 + Box 3:** pull a **fresh snapshot** of recent US market headlines, extract a best-effort **company/ticker**, then **judge** **bullish / bearish / noise** with **confidence**, a short **reason**, and latency.
+A small **educational** demo: recent **US stock news** → find a **ticker/company** (best effort) → classify **bullish / bearish / noise** with a short **reason**.
 
-This is a DIY Founder / News Signal MVP. It is **not** financial advice and does **not** trade.
+**Not financial advice. Does not trade.**
 
-## 3-box roadmap
+Full plain-English walkthrough (every flag, column meanings, sample rows): **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
 
-| Box | Role | Status |
-|-----|------|--------|
-| **1** `ingest_rss.py` | RSS pull + dedupe + terminal output | Shipped (Episode 2) |
-| **2** `extract_company.py` | Best-effort US ticker / company name | **This episode** |
-| **3** `judge_jev.py` | Bullish / Bearish / Noise + confidence + reason | **This episode** (Jev → LLM → heuristic) |
+---
 
-## What Episode 3 does
+## What is this?
 
-1. **Default live demo** (`demo_ep3.py`): fetch Google News RSS, **merge**, **sort by published desc**, take top **N≈20** (widen queries if under 10).
-2. **Box 2** — `extract_company.py`: `$TICKER`, `(TICKER)`, known aliases; otherwise **UNKNOWN**.
-3. **Box 3** — `judge_jev.py`: **Jev** → **OpenAI/Anthropic JSON** → **keyword heuristic**; every path returns a short **reason**.
-4. Prints: `published | title | ticker/company | label | confidence | reason | backend | latency`.
+| Step | What happens |
+|------|----------------|
+| 1. Headlines | Pull a fresh snapshot of recent US market / stock headlines (free Google News RSS). |
+| 2. Extract | Guess company + ticker when possible (`UNKNOWN` if not). |
+| 3. Judge | Label **bullish**, **bearish**, or **noise**, plus confidence, a one-line reason, and latency. |
 
-### Live-demo design notes
+Built for the DIY Founder “News Signal MVP” series (Episode 3 = extract + judge). You can run it with **no API keys**.
 
-- Google News RSS is **near-real-time best-effort**, not an exchange firehose.
-- Live mode prefers **latest N by time** each run (fresh snapshot). Within one fetch, duplicate ids/titles are collapsed.
-- Box 1 **seen-id dedupe** stays available for cron-style ingest (`ingest_rss.py`) and optionally via `demo_ep3.py --dedupe-seen` — **off by default** in the live demo.
-- `neutral` from a model maps to series language **noise**.
+---
 
-## Requirements
+## How to run the Episode 3 demo
 
-- Python **3.12+**
-- [uv](https://docs.astral.sh/uv/)
+### Quick start (copy-paste)
 
-## How to run Episode 3 (one command)
+Needs Python **3.12+** and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone https://github.com/jihoon-yoo-dev/news-signal-mvp.git
@@ -40,68 +33,89 @@ uv sync
 uv run python src/demo_ep3.py
 ```
 
-Default: live RSS snapshot of up to **20** newest headlines → extract → judge.
+Default: about **20** newest headlines → extract → judge → print a table.
+
+### Useful variants
 
 ```bash
-# Cap / widen floor
-uv run python src/demo_ep3.py --limit 20 --min-floor 10
+# Shorter table
+uv run python src/demo_ep3.py --limit 5
 
-# Force heuristic judge
-uv run python src/demo_ep3.py --backend heuristic
-
-# Offline fixtures (no network)
+# Repeatable offline examples (no live network news)
 uv run python src/demo_ep3.py --samples
 
-# Optional Box-1-style seen filter (not the live default)
-uv run python src/demo_ep3.py --dedupe-seen
+# Force simple keyword judge (works without API keys)
+uv run python src/demo_ep3.py --backend heuristic
+
+# See every option
+uv run python src/demo_ep3.py --help
 ```
 
-Single-box helpers:
+All flags (`--limit`, `--min-floor`, `--backend`, `--samples`, `--dedupe-seen`, `--help`) are documented with “when to use” and example output in **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
 
-```bash
-uv run python src/extract_company.py 'Apple unveils new AI features; AAPL shares jump'
-uv run python src/judge_jev.py 'NVIDIA data-center demand surges; NVDA hits fresh record high'
-```
+---
 
-Box 1 (Episode 2) cron-style ingest + seen-id dedupe:
-
-```bash
-uv run python src/ingest_rss.py
-```
-
-## Credentials (optional)
-
-Copy `.env.example` → `.env` and fill only what you have. **Never commit `.env`.**
-
-| Variable | Effect |
-|----------|--------|
-| `JEV_API_KEY` / `TYPESAFE_API_KEY` + `JEV_API_BASE` | Prefer Jev HTTP judge |
-| `OPENAI_API_KEY` | LLM JSON fallback (+ reason) |
-| `ANTHROPIC_API_KEY` | Anthropic JSON fallback (+ reason) |
-| *(none)* | Offline **heuristic_fallback** (keyword reason) |
-
-If Jev access is blocked or misconfigured, the demo **degrades honestly** — it does not invent a successful Jev response.
-
-## Sample table shape
+## Reading the table
 
 ```text
-# Episode 3 demo — live RSS snapshot feeds=2 scanned_unique=… returned=20 …
-# flow: latest headlines → extract_company → judge(+reason) → table
-# note: Google News RSS ≈ near-real-time best-effort, not a firehose
-# disclaimer: educational demo only — not financial advice
-PUBLISHED              | TITLE                                      | TICKER/CO      | LABEL    | CONF | REASON                               | BACKEND            |     MS
------------------------|--------------------------------------------|----------------|----------|------|--------------------------------------|--------------------|-------
-2026-10-26 22:01:00 UTC | Some US stock headline …                  | AAPL/Apple     | bullish  | 0.79 | bullish keywords: jump, growth       | heuristic_fallback |    0.1
-…
-# done: rows=20 judge_backend=heuristic_fallback
+PUBLISHED | TITLE | TICKER/CO | LABEL | CONF | REASON | BACKEND | MS
 ```
 
-## Disclaimer
+| Column | Meaning |
+|--------|---------|
+| **PUBLISHED** | Headline publish time (UTC), or `sample` offline. |
+| **TITLE** | News headline (may be shortened). |
+| **TICKER/CO** | e.g. `AAPL/Apple`, or `UNKNOWN/-`. |
+| **LABEL** | `bullish` / `bearish` / `noise`. |
+| **CONF** | How sure the judge is of that label (`0`–`1`). |
+| **REASON** | Short explanation (e.g. keywords it matched). |
+| **BACKEND** | Which judge ran (see below). |
+| **MS** | Judge time in milliseconds. |
 
-Educational / research / software-engineering demo only. **Not financial advice.** No buy/sell recommendations. Extraction is best-effort; labels and reasons can be wrong. Headlines can be delayed, duplicated, or misleading.
+Example (offline samples):
+
+```text
+sample | Apple unveils new AI features; AAPL share… | AAPL/Apple | bullish | 0.79 | bullish keywords: jump, after-hours… | heuristic_fallback | 0.0
+sample | Tesla recalls 40,000 vehicles over softwa… | TSLA/Tesla | bearish | 0.92 | bearish keywords: slide, slides, re… | heuristic_fallback | 0.0
+```
+
+---
+
+## Backends (brief)
+
+| Name in output | Plain English |
+|----------------|----------------|
+| `jev` | Optional decision API (needs keys + base URL). |
+| `openai_fallback` / `anthropic_fallback` | Optional LLM JSON classify (needs those API keys). |
+| `heuristic_fallback` | Built-in keyword rules — **normal when you have no keys**. |
+
+Order without forcing a backend: Jev → LLM → heuristic. Failures degrade honestly; the demo never invents a successful Jev result.
+
+Optional keys: copy `.env.example` → `.env` (never commit secrets).
+
+---
+
+## 3-box roadmap
+
+| Box | File | Role | Status |
+|-----|------|------|--------|
+| 1 | `ingest_rss.py` | RSS pull + seen-id dedupe | Episode 2 |
+| 2 | `extract_company.py` | Best-effort ticker / company | Episode 3 |
+| 3 | `judge_jev.py` | Bullish / bearish / noise + reason | Episode 3 |
+
+Live demo glue: `src/demo_ep3.py` (fresh latest-N snapshot by default; `--dedupe-seen` is optional).
+
+---
+
+## Limitations (honest)
+
+- Google News RSS is **near-real-time best-effort**, not an exchange firehose — delays and duplicates happen.
+- Ticker extract is **best-effort**; many rows will be `UNKNOWN`.
+- Labels (especially keyword heuristic) can be **wrong**.
+- **Not financial advice.** Educational / engineering demo only.
+
+---
 
 ## Next (Episode 4+)
 
-- Tighten the full `pipeline.py` glue  
-- Optional Telegram alerts  
-- Latency experiment (publish → signal) — still **no auto-trading** in the MVP
+Pipeline glue, optional alerts, latency experiments — still **no auto-trading** in the MVP.
