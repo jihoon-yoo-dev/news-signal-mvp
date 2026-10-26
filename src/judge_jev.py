@@ -6,6 +6,7 @@ Backend order (honest; never fabricates Jev success):
 2. LLM JSON classify — if OPENAI_API_KEY or ANTHROPIC_API_KEY is set
 3. Deterministic keyword heuristic — offline fallback (clearly labeled)
 
+Every path attaches a short ``reason`` (1 brief clause).
 Series language uses **noise** (Jev neutral maps to noise).
 """
 
@@ -45,7 +46,7 @@ BULLISH_TERMS = (
     "breakthrough",
     "wins contract",
     "strong demand",
-    "after-hours trading",  # often positive in samples; weak alone
+    "after-hours trading",
 )
 
 BEARISH_TERMS = (
@@ -98,10 +99,20 @@ class JudgeResult:
     confidence: float
     latency_ms: float
     backend: str
+    reason: str
     raw: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
+
+
+def _clip_reason(text: str, *, max_len: int = 72) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return "no rationale"
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1] + "…"
 
 
 def _normalize_label(value: str) -> Label:
@@ -110,7 +121,6 @@ def _normalize_label(value: str) -> Label:
         return "bullish"
     if v in {"bearish", "bear", "negative", "negative_news", "악재"}:
         return "bearish"
-    # neutral / uncertain / other → series language "noise"
     return "noise"
 
 
@@ -122,30 +132,44 @@ def _env_key(*names: str) -> str | None:
     return None
 
 
+def _matched_terms(text: str, terms: tuple[str, ...]) -> list[str]:
+    return [t for t in terms if t in text]
+
+
 def _heuristic_judge(headline: str, snippet: str | None = None) -> JudgeResult:
     started = time.perf_counter()
     text = f"{headline or ''} {snippet or ''}".lower()
-    bull = sum(1 for t in BULLISH_TERMS if t in text)
-    bear = sum(1 for t in BEARISH_TERMS if t in text)
-    noise_hits = sum(1 for t in NOISE_TERMS if t in text)
+    bull_terms = _matched_terms(text, BULLISH_TERMS)
+    bear_terms = _matched_terms(text, BEARISH_TERMS)
+    noise_terms = _matched_terms(text, NOISE_TERMS)
+    bull = len(bull_terms)
+    bear = len(bear_terms)
+    noise_hits = len(noise_terms)
 
     if bull == 0 and bear == 0:
         label: Label = "noise"
         conf = 0.55 if noise_hits else 0.4
+        if noise_terms:
+            reason = f"noise keywords: {', '.join(noise_terms[:3])}"
+        else:
+            reason = "no clear polarity keywords"
     elif bull > bear:
         label = "bullish"
         conf = min(0.92, 0.55 + 0.12 * bull - 0.08 * bear)
+        reason = f"bullish keywords: {', '.join(bull_terms[:3])}"
     elif bear > bull:
         label = "bearish"
         conf = min(0.92, 0.55 + 0.12 * bear - 0.08 * bull)
+        reason = f"bearish keywords: {', '.join(bear_terms[:3])}"
     else:
         label = "noise"
         conf = 0.45
+        reason = "mixed bullish/bearish keyword counts"
 
     if noise_hits and abs(bull - bear) <= 1:
-        # Broad market / wait-and-see headlines → prefer noise
         label = "noise"
         conf = max(conf, 0.5)
+        reason = f"broad/wait cues: {', '.join(noise_terms[:3])}"
 
     latency_ms = (time.perf_counter() - started) * 1000.0
     return JudgeResult(
@@ -153,7 +177,15 @@ def _heuristic_judge(headline: str, snippet: str | None = None) -> JudgeResult:
         confidence=round(conf, 3),
         latency_ms=round(latency_ms, 3),
         backend="heuristic_fallback",
-        raw={"bull_hits": bull, "bear_hits": bear, "noise_hits": noise_hits},
+        reason=_clip_reason(reason),
+        raw={
+            "bull_hits": bull,
+            "bear_hits": bear,
+            "noise_hits": noise_hits,
+            "bull_terms": bull_terms,
+            "bear_terms": bear_terms,
+            "noise_terms": noise_terms,
+        },
     )
 
 
@@ -168,8 +200,10 @@ def _openai_judge(headline: str, snippet: str | None, api_key: str) -> JudgeResu
         "task": (
             "Classify the market implication for a US-listed company if any. "
             "Return ONLY JSON: "
-            '{"label":"bullish|bearish|noise","confidence":0.0-1.0}. '
-            "Use noise for neutral, unclear, or market-wide with no company edge."
+            '{"label":"bullish|bearish|noise","confidence":0.0-1.0,'
+            '"reason":"one short clause"}. '
+            "Use noise for neutral, unclear, or market-wide with no company edge. "
+            "reason must be one brief clause, no trading advice."
         ),
     }
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
@@ -205,12 +239,14 @@ def _openai_judge(headline: str, snippet: str | None, api_key: str) -> JudgeResu
     except (TypeError, ValueError):
         conf = 0.5
     conf = max(0.0, min(1.0, conf))
+    reason = _clip_reason(str(parsed.get("reason") or f"openai label={label}"))
     latency_ms = (time.perf_counter() - started) * 1000.0
     return JudgeResult(
         label=label,
         confidence=round(conf, 3),
         latency_ms=round(latency_ms, 3),
         backend="openai_fallback",
+        reason=reason,
         raw={"model": model},
     )
 
@@ -222,8 +258,9 @@ def _anthropic_judge(headline: str, snippet: str | None, api_key: str) -> JudgeR
     model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest").strip()
     user = (
         "Classify this headline for a US stock news demo. "
-        'Return ONLY JSON: {"label":"bullish|bearish|noise","confidence":0.0-1.0}. '
-        "noise = neutral/unclear/market-wide.\n"
+        'Return ONLY JSON: {"label":"bullish|bearish|noise","confidence":0.0-1.0,'
+        '"reason":"one short clause"}. '
+        "noise = neutral/unclear/market-wide. No trading advice.\n"
         f"headline: {headline}\n"
         f"snippet: {snippet or ''}"
     )
@@ -234,7 +271,7 @@ def _anthropic_judge(headline: str, snippet: str | None, api_key: str) -> JudgeR
     }
     payload = {
         "model": model,
-        "max_tokens": 120,
+        "max_tokens": 160,
         "temperature": 0,
         "messages": [{"role": "user", "content": user}],
     }
@@ -261,12 +298,14 @@ def _anthropic_judge(headline: str, snippet: str | None, api_key: str) -> JudgeR
     except (TypeError, ValueError):
         conf = 0.5
     conf = max(0.0, min(1.0, conf))
+    reason = _clip_reason(str(parsed.get("reason") or f"anthropic label={label}"))
     latency_ms = (time.perf_counter() - started) * 1000.0
     return JudgeResult(
         label=label,
         confidence=round(conf, 3),
         latency_ms=round(latency_ms, 3),
         backend="anthropic_fallback",
+        reason=reason,
         raw={"model": model},
     )
 
@@ -279,7 +318,6 @@ def _jev_judge(headline: str, snippet: str | None, api_key: str) -> JudgeResult:
     """
     started = time.perf_counter()
     base = os.getenv("JEV_API_BASE", "").strip()
-    # Optional SDK path — only if installed and importable.
     try:
         import ai  # type: ignore  # noqa: F401
 
@@ -329,12 +367,19 @@ def _jev_judge(headline: str, snippet: str | None, api_key: str) -> JudgeResult:
     except (TypeError, ValueError):
         conf = 0.5
     label = _normalize_label(str(choice))
+    rationale = (
+        data.get("reason")
+        or data.get("rationale")
+        or (data.get("answer") or {}).get("reason")
+        or f"jev choice={choice}"
+    )
     latency_ms = (time.perf_counter() - started) * 1000.0
     return JudgeResult(
         label=label,
         confidence=round(max(0.0, min(1.0, conf)), 3),
         latency_ms=round(latency_ms, 3),
         backend="jev",
+        reason=_clip_reason(str(rationale)),
         raw={"endpoint": "judge"},
     )
 
@@ -366,9 +411,6 @@ def judge(
                 return _jev_judge(headline, snippet, jev_key)
             except Exception as exc:  # noqa: BLE001 — demo path must degrade
                 errors.append(f"jev: {exc}")
-                if force in {"jev", "typesafe"}:
-                    # Forced Jev failure → still try softer backends so Short demo works
-                    pass
 
     if force in {"openai", "llm"} or (not force and openai_key and force != "anthropic"):
         if openai_key and force != "anthropic":
@@ -376,8 +418,6 @@ def judge(
                 return _openai_judge(headline, snippet, openai_key)
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"openai: {exc}")
-                if force in {"openai", "llm"}:
-                    pass
 
     if force == "anthropic" or (not force and anthropic_key):
         if anthropic_key:
@@ -388,7 +428,6 @@ def judge(
 
     result = _heuristic_judge(headline, snippet)
     if errors:
-        # Attach note without printing secrets
         raw = dict(result.raw or {})
         raw["degraded_from"] = errors
         return JudgeResult(
@@ -396,6 +435,7 @@ def judge(
             confidence=result.confidence,
             latency_ms=result.latency_ms,
             backend=result.backend,
+            reason=result.reason,
             raw=raw,
         )
     return result
@@ -426,7 +466,8 @@ def main(argv: list[str] | None = None) -> int:
     result = judge(args.headline, args.snippet, force_backend=args.backend)
     print(
         f"label={result.label} confidence={result.confidence:.3f} "
-        f"latency_ms={result.latency_ms:.1f} backend={result.backend}"
+        f"latency_ms={result.latency_ms:.1f} backend={result.backend} "
+        f"reason={result.reason}"
     )
     return 0
 
