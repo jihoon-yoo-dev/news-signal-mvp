@@ -1,7 +1,7 @@
 [project]
 name = "news-signal-mvp"
 version = "0.1.0"
-description = "US stock news signal MVP — Episode 2 ships Box 1 (RSS ingest + dedupe)."
+description = "US stock news signal MVP — Episode 3 ships Box 2 (ticker extract) + Box 3 (judge)."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

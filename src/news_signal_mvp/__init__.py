@@ -1,1 +1,1 @@
-"""news-signal-mvp package stub (Episode 2: run src/ingest_rss.py)."""
+"""news-signal-mvp package stub (Episode 3: demo_ep3.py = extract + judge)."""
