@@ -87,11 +87,22 @@ The program tries judges in this order **unless you force one**:
 
 | Backend | What it is | When you see it |
 |---------|------------|-----------------|
-| **Jev** (`jev`) | A decision-style API (needs keys + endpoint). | Only if `JEV_API_KEY` / `TYPESAFE_API_KEY` and `JEV_API_BASE` are set and working. |
+| **Jev** (`jev`) | A decision-style API (needs keys + endpoint). | Only if `JEV_API_KEY` / `TYPESAFE_API_KEY` **and** `JEV_API_BASE` are set and working. |
 | **LLM** (`openai_fallback` / `anthropic_fallback`) | A small JSON classify call to OpenAI or Anthropic. | If those API keys exist and Jev didn’t win. |
 | **Heuristic** (`heuristic_fallback`) | Simple keyword rules in this repo. | **Normal with no API keys.** Also used if cloud judges fail. |
 
 **Having no keys is fine.** For most GitHub readers, `heuristic_fallback` is expected.
+
+### Connect Jev (optional)
+
+Full step-by-step (account, `.env`, verify commands, troubleshooting): **[JEV_SETUP.md](JEV_SETUP.md)**.
+
+Short version:
+
+1. Get TypeSafe / Jev API access (may be early access).
+2. Copy `.env.example` → `.env` and set `JEV_API_KEY` (or `TYPESAFE_API_KEY`) **plus** `JEV_API_BASE`.
+3. Verify: `uv run python src/judge_jev.py 'NVIDIA demand surges' --backend jev` → look for **`backend=jev`**.
+4. Never commit `.env`.
 
 Optional: copy `.env.example` → `.env` and fill keys. Never commit `.env`.
 

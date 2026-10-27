@@ -6,6 +6,9 @@ A small **educational** demo: recent **US stock news** → find a **ticker/compa
 
 Full plain-English walkthrough (every flag, column meanings, sample rows): **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
 
+**Want to connect Jev (TypeSafe)?** Step-by-step env + verify guide: **[docs/JEV_SETUP.md](docs/JEV_SETUP.md)**.  
+Without Jev keys the demo still runs using the built-in keyword judge.
+
 ---
 
 ## What is this?
@@ -85,13 +88,13 @@ sample | Tesla recalls 40,000 vehicles over softwa… | TSLA/Tesla | bearish | 0
 
 | Name in output | Plain English |
 |----------------|----------------|
-| `jev` | Optional decision API (needs keys + base URL). |
+| `jev` | Optional decision API (needs keys + base URL). Setup: **[docs/JEV_SETUP.md](docs/JEV_SETUP.md)**. |
 | `openai_fallback` / `anthropic_fallback` | Optional LLM JSON classify (needs those API keys). |
 | `heuristic_fallback` | Built-in keyword rules — **normal when you have no keys**. |
 
 Order without forcing a backend: Jev → LLM → heuristic. Failures degrade honestly; the demo never invents a successful Jev result.
 
-Optional keys: copy `.env.example` → `.env` (never commit secrets).
+Optional keys: copy `.env.example` → `.env` (never commit secrets). For Jev you need **both** a key (`JEV_API_KEY` or `TYPESAFE_API_KEY`) **and** `JEV_API_BASE`.
 
 ---
 
