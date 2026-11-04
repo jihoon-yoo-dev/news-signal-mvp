@@ -19,11 +19,11 @@ Without Jev keys the demo still runs using the built-in keyword judge.
 | 2. Extract | Guess company + ticker when possible (`UNKNOWN` if not). |
 | 3. Judge | Label **bullish**, **bearish**, or **noise**, plus confidence, a one-line reason, and latency. |
 
-Built for the DIY Founder “News Signal MVP” series (Episode 3 = extract + judge). You can run it with **no API keys**.
+Built for the DIY Founder “News Signal MVP” series (Episode 4 = full pipeline glue). You can run it with **no API keys**.
 
 ---
 
-## How to run the Episode 3 demo
+## How to run the Episode 4 pipeline
 
 ### Quick start (copy-paste)
 
@@ -33,27 +33,29 @@ Needs Python **3.12+** and [uv](https://docs.astral.sh/uv/).
 git clone https://github.com/jihoon-yoo-dev/news-signal-mvp.git
 cd news-signal-mvp
 uv sync
-uv run python src/demo_ep3.py
+uv run python src/pipeline.py
 ```
 
-Default: about **20** newest headlines → extract → judge → print a table.
+Default: about **20** newest headlines → extract → judge → print a table.  
+Without API keys the judge uses the built-in **heuristic**; with keys it prefers Jev, then LLM, then heuristic.
 
 ### Useful variants
 
 ```bash
 # Shorter table
-uv run python src/demo_ep3.py --limit 5
+uv run python src/pipeline.py --limit 5
 
 # Repeatable offline examples (no live network news)
-uv run python src/demo_ep3.py --samples
+uv run python src/pipeline.py --samples
 
 # Force simple keyword judge (works without API keys)
-uv run python src/demo_ep3.py --backend heuristic
+uv run python src/pipeline.py --backend heuristic
 
 # See every option
-uv run python src/demo_ep3.py --help
+uv run python src/pipeline.py --help
 ```
 
+Episode 3 demo (`src/demo_ep3.py`) still works the same way for the extract+judge walkthrough.  
 All flags (`--limit`, `--min-floor`, `--backend`, `--samples`, `--dedupe-seen`, `--help`) are documented with “when to use” and example output in **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
 
 ---
@@ -105,8 +107,9 @@ Optional keys: copy `.env.example` → `.env` (never commit secrets). For Jev yo
 | 1 | `ingest_rss.py` | RSS pull + seen-id dedupe | Episode 2 |
 | 2 | `extract_company.py` | Best-effort ticker / company | Episode 3 |
 | 3 | `judge_jev.py` | Bullish / bearish / noise + reason | Episode 3 |
+| glue | `pipeline.py` | RSS → extract → judge → table | **Episode 4** |
 
-Live demo glue: `src/demo_ep3.py` (fresh latest-N snapshot by default; `--dedupe-seen` is optional).
+Episode 3 walkthrough: `src/demo_ep3.py`. Episode 4 entry point: `src/pipeline.py` (fresh latest-N snapshot by default; `--dedupe-seen` is optional).
 
 ---
 
@@ -115,10 +118,10 @@ Live demo glue: `src/demo_ep3.py` (fresh latest-N snapshot by default; `--dedupe
 - Google News RSS is **near-real-time best-effort**, not an exchange firehose — delays and duplicates happen.
 - Ticker extract is **best-effort**; many rows will be `UNKNOWN`.
 - Labels (especially keyword heuristic) can be **wrong**.
-- **Not financial advice.** Educational / engineering demo only.
+- **Not financial advice.** Educational / engineering demo only. No Telegram alerts or auto-trading in this MVP.
 
 ---
 
-## Next (Episode 4+)
+## Next (Episode 5+)
 
-Pipeline glue, optional alerts, latency experiments — still **no auto-trading** in the MVP.
+Optional alerts / latency experiments — still **no auto-trading** in the MVP.
