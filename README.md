@@ -1,66 +1,94 @@
 # news-signal-mvp
 
-A small **educational** demo: recent **US stock news** → find a **ticker/company** (best effort) → classify **bullish / bearish / noise** with a short **reason**.
+**US stock news → company/ticker → bullish / bearish / noise** (with confidence).
 
-**Not financial advice. Does not trade.**
+Educational MVP for faster decision-quality experiments. **Not a trading bot. Not financial advice.**
 
-Full plain-English walkthrough (every flag, column meanings, sample rows): **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
-
-**Want to connect Jev (TypeSafe)?** Step-by-step env + verify guide: **[docs/JEV_SETUP.md](docs/JEV_SETUP.md)**.  
-Without Jev keys the demo still runs using the built-in keyword judge.
+Works on **Windows and Mac** if you have `git` and [uv](https://docs.astral.sh/uv/).
 
 ---
 
-## What is this?
+## Why this exists
 
-| Step | What happens |
-|------|----------------|
-| 1. Headlines | Pull a fresh snapshot of recent US market / stock headlines (free Google News RSS). |
-| 2. Extract | Guess company + ticker when possible (`UNKNOWN` if not). |
-| 3. Judge | Label **bullish**, **bearish**, or **noise**, plus confidence, a one-line reason, and latency. |
+Built from a client brief: take recent US stock headlines, guess the company/ticker when possible, then label each row **bullish**, **bearish**, or **noise** (plus a confidence score and a short reason).
 
-Built for the DIY Founder “News Signal MVP” series (Episode 4 = full pipeline glue). You can run it with **no API keys**.
+Goal: a small tool you can run locally to experiment with news → signal quality — not auto-trading, not alerts.
 
 ---
 
-## How to run the Episode 4 pipeline
+## How it’s designed
 
-### Quick start (copy-paste)
+Three boxes glued by one script:
 
-Needs Python **3.12+** and [uv](https://docs.astral.sh/uv/).
+| Box | What it does | File |
+|-----|----------------|------|
+| 1. Ingest | Pull recent headlines from free Google News RSS | `src/ingest_rss.py` |
+| 2. Extract | Best-effort company + ticker (`UNKNOWN` if unclear) | `src/extract_company.py` |
+| 3. Judge | Label bullish / bearish / noise + confidence + reason | `src/judge_jev.py` |
+| Glue | Runs 1 → 2 → 3 and prints a table | `src/pipeline.py` |
+
+**Judge order (honest):** Jev → LLM (OpenAI/Anthropic) → `heuristic_fallback`.
+
+- With no API keys, you get the built-in **keyword heuristic**. That is normal.
+- The demo never fakes a successful Jev result. If keys/base URL are missing or the call fails, it falls through and says so in the `BACKEND` column.
+
+---
+
+## How to run
+
+### 1. Clone
 
 ```bash
 git clone https://github.com/jihoon-yoo-dev/news-signal-mvp.git
 cd news-signal-mvp
+```
+
+### 2. Install uv (once)
+
+See [uv install docs](https://docs.astral.sh/uv/getting-started/installation/). Then:
+
+```bash
 uv sync
+```
+
+Needs Python **3.12+** (uv will manage it).
+
+### 3. Optional API keys
+
+```bash
+cp .env.example .env
+```
+
+Leave `.env` empty to use the heuristic judge.  
+To try real AI backends, fill keys in `.env` (never commit that file):
+
+- **Jev / TypeSafe:** key **and** `JEV_API_BASE` (see [docs/JEV_SETUP.md](docs/JEV_SETUP.md))
+- **or** `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` for LLM fallback
+
+### 4. Run the pipeline
+
+```bash
 uv run python src/pipeline.py
 ```
 
-Default: about **20** newest headlines → extract → judge → print a table.  
-Without API keys the judge uses the built-in **heuristic**; with keys it prefers Jev, then LLM, then heuristic.
+Default: about **20** newest headlines → extract → judge → terminal table.
 
-### Useful variants
+Useful options:
 
 ```bash
-# Shorter table
+# Fewer rows (faster / smaller demos)
 uv run python src/pipeline.py --limit 5
 
-# Repeatable offline examples (no live network news)
+# Offline sample headlines (no live RSS)
 uv run python src/pipeline.py --samples
 
-# Force simple keyword judge (works without API keys)
+# Force keyword judge (no API keys needed)
 uv run python src/pipeline.py --backend heuristic
 
-# See every option
 uv run python src/pipeline.py --help
 ```
 
-Episode 3 demo (`src/demo_ep3.py`) still works the same way for the extract+judge walkthrough.  
-All flags (`--limit`, `--min-floor`, `--backend`, `--samples`, `--dedupe-seen`, `--help`) are documented with “when to use” and example output in **[docs/DEMO_USAGE.md](docs/DEMO_USAGE.md)**.
-
----
-
-## Reading the table
+### 5. Read the table
 
 ```text
 PUBLISHED | TITLE | TICKER/CO | LABEL | CONF | REASON | BACKEND | MS
@@ -68,14 +96,14 @@ PUBLISHED | TITLE | TICKER/CO | LABEL | CONF | REASON | BACKEND | MS
 
 | Column | Meaning |
 |--------|---------|
-| **PUBLISHED** | Headline publish time (UTC), or `sample` offline. |
-| **TITLE** | News headline (may be shortened). |
-| **TICKER/CO** | e.g. `AAPL/Apple`, or `UNKNOWN/-`. |
-| **LABEL** | `bullish` / `bearish` / `noise`. |
-| **CONF** | How sure the judge is of that label (`0`–`1`). |
-| **REASON** | Short explanation (e.g. keywords it matched). |
-| **BACKEND** | Which judge ran (see below). |
-| **MS** | Judge time in milliseconds. |
+| **PUBLISHED** | Headline time (UTC), or `sample` offline |
+| **TITLE** | News headline (may be shortened) |
+| **TICKER/CO** | e.g. `AAPL/Apple`, or `UNKNOWN/-` |
+| **LABEL** | `bullish` / `bearish` / `noise` |
+| **CONF** | Confidence `0`–`1` |
+| **REASON** | Short explanation |
+| **BACKEND** | Which judge ran (`jev`, `openai_fallback`, `anthropic_fallback`, or `heuristic_fallback`) |
+| **MS** | Judge time in milliseconds |
 
 Example (offline samples):
 
@@ -84,44 +112,28 @@ sample | Apple unveils new AI features; AAPL share… | AAPL/Apple | bullish | 0
 sample | Tesla recalls 40,000 vehicles over softwa… | TSLA/Tesla | bearish | 0.92 | bearish keywords: slide, slides, re… | heuristic_fallback | 0.0
 ```
 
----
-
-## Backends (brief)
-
-| Name in output | Plain English |
-|----------------|----------------|
-| `jev` | Optional decision API (needs keys + base URL). Setup: **[docs/JEV_SETUP.md](docs/JEV_SETUP.md)**. |
-| `openai_fallback` / `anthropic_fallback` | Optional LLM JSON classify (needs those API keys). |
-| `heuristic_fallback` | Built-in keyword rules — **normal when you have no keys**. |
-
-Order without forcing a backend: Jev → LLM → heuristic. Failures degrade honestly; the demo never invents a successful Jev result.
-
-Optional keys: copy `.env.example` → `.env` (never commit secrets). For Jev you need **both** a key (`JEV_API_KEY` or `TYPESAFE_API_KEY`) **and** `JEV_API_BASE`.
+More flag detail: [docs/DEMO_USAGE.md](docs/DEMO_USAGE.md).
 
 ---
 
-## 3-box roadmap
+## Current constraints / limitations
 
-| Box | File | Role | Status |
-|-----|------|------|--------|
-| 1 | `ingest_rss.py` | RSS pull + seen-id dedupe | Episode 2 |
-| 2 | `extract_company.py` | Best-effort ticker / company | Episode 3 |
-| 3 | `judge_jev.py` | Bullish / bearish / noise + reason | Episode 3 |
-| glue | `pipeline.py` | RSS → extract → judge → table | **Episode 4** |
-
-Episode 3 walkthrough: `src/demo_ep3.py`. Episode 4 entry point: `src/pipeline.py` (fresh latest-N snapshot by default; `--dedupe-seen` is optional).
+- **News source:** free Google News RSS — near-real-time best effort, **not** an exchange firehose. Delays and duplicates happen.
+- **Ticker extract:** best-effort; many rows will be `UNKNOWN`.
+- **Without API keys:** judge is a **keyword heuristic**, not a real AI call. Labels can be wrong.
+- **No Telegram / email alerts** yet.
+- **No auto-trading.**
+- **Not financial advice.** Educational / engineering demo only.
 
 ---
 
-## Limitations (honest)
+## Build-in-public Shorts (DIY Founder)
 
-- Google News RSS is **near-real-time best-effort**, not an exchange firehose — delays and duplicates happen.
-- Ticker extract is **best-effort**; many rows will be `UNKNOWN`.
-- Labels (especially keyword heuristic) can be **wrong**.
-- **Not financial advice.** Educational / engineering demo only. No Telegram alerts or auto-trading in this MVP.
+How this MVP was built in public:
 
----
-
-## Next (Episode 5+)
-
-Optional alerts / latency experiments — still **no auto-trading** in the MVP.
+| Episode | Topic | Link |
+|---------|--------|------|
+| 1 | Brief / plan | https://www.youtube.com/shorts/mvtQNNoDVy8 |
+| 2 | RSS ingest | https://youtube.com/shorts/1QidkyEhb1Y |
+| 3 | Extract + judge | https://youtube.com/shorts/2y8BhumiUhE |
+| 4 | Full pipeline glue | https://youtube.com/shorts/iZb0yA1QDcg |
