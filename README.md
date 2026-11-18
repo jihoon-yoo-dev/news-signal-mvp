@@ -1,8 +1,8 @@
 # news-signal-mvp
 
-**US stock news → company/ticker → bullish / bearish / noise** (with confidence).
+**US stock news-signal MVP:** Google News RSS → dedupe → ticker extract → bullish / bearish / noise (Jev / AI judge; heuristic without keys).
 
-Educational MVP for faster decision-quality experiments. **Not a trading bot. Not financial advice.**
+Client/friend demo of news → ticker → sentiment signal. Educational only — **not a trading bot, not financial advice.**
 
 Works on **Windows and Mac** if you have `git` and [uv](https://docs.astral.sh/uv/).
 
